@@ -1,0 +1,92 @@
+# Inference Router Configuration
+
+models:
+  llama-8b-finetune:
+    endpoint: "http://localhost:8000/v1/completions"
+    cost_per_1m_tokens: 0.01
+    type: "vllm"
+    max_concurrent: 100
+    
+  llama-70b-finetune:
+    endpoint: "http://localhost:8001/v1/completions"
+    cost_per_1m_tokens: 0.10
+    type: "vllm"
+    max_concurrent: 50
+    lora_adapter: "custom-lora-v1"
+    
+  qwen-2.5-7b:
+    endpoint: "http://localhost:8002/v1/completions"
+    cost_per_1m_tokens: 0.005
+    type: "vllm"
+    max_concurrent: 150
+    
+  claude-4:
+    endpoint: "https://api.anthropic.com/v1/messages"
+    cost_per_1m_tokens: 15.0
+    type: "api"
+    api_key_env: "ANTHROPIC_API_KEY"
+    
+  gpt-4:
+    endpoint: "https://api.openai.com/v1/chat/completions"
+    cost_per_1m_tokens: 10.0
+    type: "api"
+    api_key_env: "OPENAI_API_KEY"
+
+routing_rules:
+  # Simple queries
+  - condition:
+      complexity: "simple"
+    action:
+      model: "llama-8b-finetune"
+      
+  # Hard queries for enterprise
+  - condition:
+      complexity: "hard"
+      user_tier: "enterprise"
+    action:
+      model: "claude-4"
+      
+  # Hard queries for basic users
+  - condition:
+      complexity: "hard"
+      user_tier: "basic"
+    action:
+      model: "gpt-4"
+      
+  # Budget exhausted fallback
+  - condition:
+      budget_remaining: "<0.01"
+    action:
+      model: "qwen-2.5-7b"
+      
+  # Perfect quality requirement
+  - condition:
+      quality_requirement: "perfect"
+      user_tier: ["basic", "enterprise"]
+    action:
+      model: "claude-4"
+
+user_tiers:
+  free:
+    daily_limit_usd: 1.0
+    rate_limit_per_minute: 10
+    
+  basic:
+    daily_limit_usd: 10.0
+    rate_limit_per_minute: 60
+    
+  enterprise:
+    daily_limit_usd: 1000.0
+    rate_limit_per_minute: 1000
+
+caching:
+  enabled: true
+  ttl_seconds: 3600
+  min_prompt_length: 100
+  cache_backend: "redis"
+  redis_url: "redis://localhost:6379"
+
+monitoring:
+  log_file: "usage_logs.jsonl"
+  metrics_port: 9090
+  alert_on_error_rate: 0.05
